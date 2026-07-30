@@ -1,4 +1,4 @@
-# --------- Fetchers (último dato para las tarjetas) ---------
+# --------- Fetchers (último dato + previo para las tarjetas) ---------
 fetch_banxico <- function() {
   codes <- c(
     CETES28 = "SF45470",
@@ -14,13 +14,14 @@ fetch_banxico <- function() {
 
   pull_one <- function(code, label, style) {
     df <- safe_try(getSerieDataFrame(dat, code)); if (is.null(df)) return(NULL)
-    lv <- last_val(df)
+    lv <- last_two(df)
     tibble(
       grupo = "México",
       etiqueta = label,
       codigo = code,
-      valor = suppressWarnings(as.numeric(lv$value)),
-      fecha = as.Date(lv$date),
+      valor = lv$value,
+      valor_prev = lv$prev,
+      fecha = lv$date,
       formato = style
     )
   }
@@ -47,14 +48,15 @@ fetch_fred <- function() {
     ))
     if (is.null(df) || !nrow(df)) return(NULL)
     df <- df %>% arrange(date) %>% mutate(yoy = (value/lag(value, 12) - 1) * 100)
-    last_row <- df %>% filter(!is.na(yoy)) %>% slice_tail(n = 1)
-    if (!nrow(last_row)) return(NULL)
+    lv <- last_two(df %>% transmute(date, value = yoy))
+    if (is.na(lv$value)) return(NULL)
     tibble(
       grupo   = "Estados Unidos",
       etiqueta= "Inflación general (USA)",
       codigo  = "CPIAUCSL_YoY",
-      valor   = as.numeric(last_row$yoy),
-      fecha   = as.Date(last_row$date),
+      valor   = lv$value,
+      valor_prev = lv$prev,
+      fecha   = lv$date,
       formato = "pct"
     )
   }
@@ -62,13 +64,14 @@ fetch_fred <- function() {
   pull_fred <- function(id, label, style) {
     df <- safe_try(fredr(series_id = id, observation_end = Sys.Date()))
     if (is.null(df) || !nrow(df)) return(NULL)
-    lv <- last_val(dplyr::select(df, date, value))
+    lv <- last_two(dplyr::select(df, date, value))
     tibble(
       grupo = "Estados Unidos",
       etiqueta = label,
       codigo = id,
-      valor = suppressWarnings(as.numeric(lv$value)),
-      fecha = as.Date(lv$date),
+      valor = lv$value,
+      valor_prev = lv$prev,
+      fecha = lv$date,
       formato = style
     )
   }
@@ -94,13 +97,14 @@ fetch_yahoo <- function() {
     close_col <- grep("\\.Close$", names(df), value = TRUE)
     if (!length(close_col)) return(NULL)
     df <- df %>% dplyr::select(date, value = all_of(close_col))
-    lv <- last_val(df)
+    lv <- last_two(df)
     tibble(
       grupo = "Mercados",
       etiqueta = label,
       codigo = ticker,
-      valor = suppressWarnings(as.numeric(lv$value)),
-      fecha = as.Date(lv$date),
+      valor = lv$value,
+      valor_prev = lv$prev,
+      fecha = lv$date,
       formato = "index"
     )
   }
@@ -121,14 +125,14 @@ fetch_all <- function() {
 # --------- Históricos para el modal ---------
 fetch_history <- function(code) {
   start <- as.Date("2000-01-01")
-  if (grepl("^[A-Z]{2}\\d+$", code)) {                 
+  if (grepl("^[A-Z]{2}\\d+$", code)) {
     dat <- safe_try(getSeriesData(code, startDate = start, endDate = Sys.Date()))
     if (is.null(dat)) return(tibble(date=as.Date(NA), value=NA_real_))
     df <- getSerieDataFrame(dat, code)
     df <- df %>% transmute(date = as.Date(date), value = suppressWarnings(as.numeric(value))) %>%
       filter(date >= start)
     return(df)
-  } else if (identical(code, "CPIAUCSL_YoY")) {        
+  } else if (identical(code, "CPIAUCSL_YoY")) {
     df <- safe_try(fredr(
       series_id = "CPIAUCSL",
       observation_start = start - lubridate::years(1),
@@ -138,7 +142,7 @@ fetch_history <- function(code) {
     df <- df %>% arrange(date) %>% mutate(value = (value/lag(value, 12) - 1) * 100) %>%
       filter(date >= start) %>% select(date, value)
     return(df)
-  } else if (startsWith(code, "^")) {                 
+  } else if (startsWith(code, "^")) {
     xt <- safe_try(quantmod::getSymbols(
       code, src = "yahoo", from = start, to = Sys.Date(),
       periodicity = "daily", auto.assign = FALSE
@@ -149,7 +153,7 @@ fetch_history <- function(code) {
     df <- df[, c("date", close_col)]; names(df) <- c("date","value")
     df$date <- as.Date(df$date)
     return(df)
-  } else {                                            
+  } else {
     df <- safe_try(fredr(
       series_id = code, observation_start = start, observation_end = Sys.Date()
     ))
