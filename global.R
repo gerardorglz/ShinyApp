@@ -3,7 +3,7 @@ if (!require(pacman)) install.packages("pacman")
 pacman::p_load(
   shiny, bslib, dplyr, purrr, tibble, lubridate, scales,
   siebanxicor, fredr, quantmod, httr, jsonlite, glue,
-  ggplot2, ggthemes, plotly, zoo
+  plotly, zoo
 )
 
 # --------- Configuración ---------

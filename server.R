@@ -102,7 +102,9 @@ server <- function(input, output, session) {
     ))
   })
 
-  # --------- Gráfica interactiva con tooltips (plotly) ---------
+  # --------- Gráfica interactiva con tooltips (plotly nativo) ---------
+  # Se usa plot_ly() directo en lugar de ggplotly() porque ggplot2 >= 4.0
+  # rompe la conversión de ggplotly ("subscript out of bounds").
   output$modal_plot <- renderPlotly({
     dat <- clicked(); req(dat)
     df  <- dat$df
@@ -116,33 +118,41 @@ server <- function(input, output, session) {
     } else {
       df <- df %>% dplyr::filter(date >= as.Date("2000-01-01"))
     }
+    df <- df %>% dplyr::filter(!is.na(value))
     req(nrow(df) > 1)
 
     df <- df %>%
       dplyr::arrange(date) %>%
       dplyr::mutate(
         value_num = as.numeric(value),
-        fecha_txt = format(as.Date(date), "%Y-%m-%d"),
-        val_txt   = fmt_hover(value_num, formato),
-        text      = paste0(fecha_txt, "<br>", serie_label, ": ", val_txt)
+        text = paste0(format(as.Date(date), "%d %b %Y"), "<br>",
+                      serie_label, ": ", fmt_hover(value_num, formato))
       )
+
+    yaxis <- list(title = "", zeroline = FALSE, gridcolor = "#eef2f2")
+    if (identical(formato, "pct")) {
+      yaxis$ticksuffix <- " %"
+    } else if (identical(formato, "currency")) {
+      yaxis$tickprefix <- "$"; yaxis$tickformat <- ",.2f"
+    } else {
+      yaxis$tickformat <- ",.2f"
+    }
 
     accent <- "#3fb0ac"
-    p <- ggplot(df, aes(x = as.Date(date), y = value_num, group = 1, text = text)) +
-      geom_area(fill = accent, alpha = 0.12) +
-      geom_line(color = accent, linewidth = 0.7) +
-      scale_x_date(date_labels = "%b %Y") +
-      scale_y_continuous(labels = function(v) fmt_hover(v, formato)) +
-      labs(x = NULL, y = NULL) +
-      theme_minimal(base_size = 13) +
-      theme(
-        panel.grid.minor = element_blank(),
-        panel.grid.major.x = element_blank(),
-        axis.text = element_text(color = "#6c757d")
-      )
-
-    ggplotly(p, tooltip = "text") %>%
-      layout(hovermode = "x unified", margin = list(l = 10, r = 10, t = 10, b = 10)) %>%
+    plot_ly(
+      df, x = ~date, y = ~value_num,
+      type = "scatter", mode = "lines",
+      line = list(color = accent, width = 2),
+      fill = "tozeroy", fillcolor = "rgba(63,176,172,0.12)",
+      text = ~text, hoverinfo = "text"
+    ) %>%
+      layout(
+        hovermode = "x unified",
+        xaxis = list(title = "", gridcolor = "#eef2f2"),
+        yaxis = yaxis,
+        margin = list(l = 10, r = 10, t = 10, b = 10),
+        plot_bgcolor = "rgba(0,0,0,0)", paper_bgcolor = "rgba(0,0,0,0)"
+      ) %>%
       config(displaylogo = FALSE, modeBarButtonsToRemove = list("select2d", "lasso2d"))
   })
 }

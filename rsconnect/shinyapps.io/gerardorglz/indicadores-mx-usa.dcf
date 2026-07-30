@@ -1,0 +1,10 @@
+name: indicadores-mx-usa
+title:
+username: gerardorglz
+account: gerardorglz
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 15201646
+bundleId: 12340234
+url: https://gerardorglz.shinyapps.io/indicadores-mx-usa/
+version: 1
